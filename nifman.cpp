@@ -1,7 +1,20 @@
 /*
  * Copyright (c) 2021 EKA2L1 Team
- *
+ * 
  * This file is part of EKA2L1 project.
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <services/internet/nifman.h>
@@ -10,7 +23,6 @@
 
 #include <common/cvt.h>
 #include <common/log.h>
-#include <cstring>
 #include <utils/err.h>
 
 namespace eka2l1 {
@@ -48,6 +60,7 @@ namespace eka2l1 {
         if (!ssock) {
             LOG_ERROR(SERVICE_INTERNET, "Nifman requires HLE Socket server to be present!");
             ctx->complete(epoc::error_not_supported);
+
             return;
         }
 
@@ -55,6 +68,7 @@ namespace eka2l1 {
         if (!agent_) {
             LOG_ERROR(SERVICE_INTERNET, "Agent with name {} not found!", common::ucs2_to_utf8(agt_name.value()));
             ctx->complete(epoc::error_not_found);
+
             return;
         }
 
@@ -62,8 +76,13 @@ namespace eka2l1 {
     }
 
     void nifman_client_session::get_active_settings(service::ipc_context *ctx, const epoc::socket::setting_type type) {
-        // We mock this even if no real connection is established, to please HTTP applications
-        // checking the active IAP ID.
+        if (!conn_) {
+            // TODO: In morden RConnection docs (the replacement of this server), it said that you can't query
+            // settings when no connection is yet to be established... Or no call Start()
+            // LOG_ERROR(SERVICE_INTERNET, "No connection has been established to get setting");
+            ctx->complete(epoc::error_not_ready);
+            return;
+        }
 
         std::optional<std::u16string> table_name = ctx->get_argument_value<std::u16string>(0);
         std::optional<std::u16string> column_name = ctx->get_argument_value<std::u16string>(1);
@@ -73,6 +92,8 @@ namespace eka2l1 {
             return;
         }
 
+        const std::u16string setting_name = table_name.value() + u"\\" + column_name.value();
+
         std::uint8_t *dest_buffer = ctx->get_descriptor_argument_ptr(2);
         std::size_t max_size = ctx->get_argument_max_data_size(2);
 
@@ -81,24 +102,15 @@ namespace eka2l1 {
             return;
         }
 
-        std::size_t res_len = 0; // 修复：添加了遗漏的变量声明
+        const std::size_t res = conn_->get_setting(setting_name, type, dest_buffer, max_size);
+        if (res == static_cast<std::size_t>(-1)) {
+            LOG_ERROR(SERVICE_INTERNET, "Fail to get setting of a connection!");
+            ctx->complete(epoc::error_general);
 
-        if (type == epoc::socket::setting_type_int) {
-            if (max_size >= 4) {
-                // Return a dummy IAP ID (e.g. 1)
-                std::uint32_t simulated_id = 1;
-                std::memcpy(dest_buffer, &simulated_id, 4);
-                res_len = 4;
-            } else {
-                res_len = max_size;
-            }
-        } else {
-            // Unhandled setting type, just zero it or return empty
-            std::memset(dest_buffer, 0, max_size);
-            res_len = 0;
+            return;
         }
 
-        ctx->set_descriptor_argument_length(2, static_cast<std::uint32_t>(res_len));
+        ctx->set_descriptor_argument_length(2, static_cast<std::uint32_t>(res));
         ctx->complete(epoc::error_none);
     }
 
@@ -110,11 +122,12 @@ namespace eka2l1 {
 
         case nifman_get_active_int_setting:
             get_active_settings(ctx, epoc::socket::setting_type_int);
-            break;
+            return;
 
         default:
-            LOG_ERROR(SERVICE_INTERNET, "Unimplemented opcode for NifMan 0x{:X}, complete with success to avoid hang", ctx->msg->function);
+            LOG_ERROR(SERVICE_INTERNET, "Unimplemented opcode for NifMan 0x{:X}, complete all", ctx->msg->function);
             ctx->complete(epoc::error_none);
+
             break;
         }
     }
