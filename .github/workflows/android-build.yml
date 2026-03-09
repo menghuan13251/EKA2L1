@@ -1,0 +1,47 @@
+name: EKA2L1 Android Build
+
+on:
+  push:
+    branches: [ main, master ]  # 推送代码到main/master分支时自动编译
+  workflow_dispatch:  # 允许手动触发编译
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # 使用Ubuntu系统编译
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive  # 拉取所有子模块（EKA2L1依赖子模块）
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: gradle
+
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Install NDK
+      run: |
+        # 安装EKA2L1适配的NDK版本（25b）
+        sdkmanager --install "ndk;25.2.9519653" --sdk_root=${ANDROID_SDK_ROOT}
+        echo "NDK_PATH=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
+
+    - name: Build Android APK
+      run: |
+        # 进入安卓编译目录
+        cd src/emu/android
+        # 赋予编译脚本权限
+        chmod +x ./gradlew
+        # 开始编译debug版APK
+        ./gradlew assembleDebug
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: EKA2L1-Android-debug
+        path: src/emu/android/app/build/outputs/apk/debug/app-debug.apk
