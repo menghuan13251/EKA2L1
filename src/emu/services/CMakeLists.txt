@@ -113,6 +113,7 @@ add_library(epocservs
         include/services/socket/agent/genconn.h
         include/services/socket/common.h
         include/services/socket/connection.h
+        include/services/socket/iap.h
         include/services/socket/server.h
         include/services/socket/socket.h
         include/services/sysagt/sysagt.h
@@ -187,6 +188,7 @@ add_library(epocservs
         src/centralrepo/cre.cpp
         src/centralrepo/repo.cpp
         src/comm/comm.cpp
+        src/dbms/dbms.cpp
         src/internet/protocols/overall.cpp
         src/internet/protocols/resolver.cpp
         src/internet/protocols/socket.cpp
@@ -260,6 +262,7 @@ add_library(epocservs
         src/sms/settings.cpp
         src/socket/agent/genconn.cpp
         src/socket/connection.cpp
+        src/socket/iap.cpp
         src/socket/netdb.cpp
         src/socket/protocol.cpp
         src/socket/resolver.cpp
