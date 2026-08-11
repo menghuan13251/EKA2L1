@@ -1175,7 +1175,7 @@ namespace eka2l1::epoc {
         server_ptr server = kern->get_by_name<service::server>(server_name);
 
         if (!server) {
-            LOG_TRACE(KERNEL, "Create session to unexist server: {}", server_name);
+            LOG_WARN(KERNEL, "Create session to unexist server: {}", server_name);
             return epoc::error_not_found;
         }
 
@@ -1187,7 +1187,7 @@ namespace eka2l1::epoc {
         server_ptr server = kern->get<service::server>(h);
 
         if (!server) {
-            LOG_TRACE(KERNEL, "Create session to unexist server handle: {}", h);
+            LOG_WARN(KERNEL, "Create session to unexist server handle: {}", h);
             return epoc::error_not_found;
         }
 
