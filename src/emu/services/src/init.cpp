@@ -32,6 +32,7 @@
 #include <services/bluetooth/btman.h>
 #include <services/centralrepo/centralrepo.h>
 #include <services/comm/comm.h>
+#include <services/dbms/dbms.h>
 #include <services/drm/helper.h>
 #include <services/drm/notifier/notifier.h>
 #include <services/drm/rights/rights.h>
@@ -235,6 +236,19 @@ namespace eka2l1 {
             CREATE_SERVER(sys, socket_server);
 
             CREATE_SERVER(sys, comm_server);
+
+            // Dbms (database) server. The guest's CommDB access point list is read
+            // through this server; register under every candidate name seen across
+            // Symbian ROM builds so the guest's RDbs session actually reaches our
+            // logging skeleton instead of failing with "unexist server".
+            {
+                const char *dbms_names[] = { "!Dbms", "Dbms", "!DbmsServer", "DbmsServer", "EDbms" };
+                for (const char *name : dbms_names) {
+                    std::unique_ptr<service::server> dbms_temp = std::make_unique<dbms_server>(sys, name);
+                    sys->get_kernel_system()->add_custom_server(dbms_temp);
+                }
+            }
+
             CREATE_SERVER(sys, bt_server);
             CREATE_SERVER(sys, btman_server);
             CREATE_SERVER(sys, accessory_server);
