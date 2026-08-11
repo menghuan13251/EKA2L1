@@ -21,10 +21,12 @@
 
 #include <common/container.h>
 #include <services/socket/common.h>
+#include <services/socket/iap.h>
 
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace eka2l1 {
@@ -68,6 +70,10 @@ namespace eka2l1::epoc::socket {
     public:
         explicit connection(protocol *pr, saddress dest);
 
+        // Connections are owned and destroyed through this base class (see connect_agent::start_connection),
+        // so the destructor has to be virtual for the derived cleanup to run.
+        virtual ~connection() = default;
+
         std::size_t register_progress_advance_callback(progress_advance_callback cb);
         bool remove_progress_advance_callback(const std::size_t handle);
 
@@ -88,6 +94,68 @@ namespace eka2l1::epoc::socket {
         virtual std::size_t get_setting(const std::u16string &setting_name, const setting_type type, std::uint8_t *dest_buffer,
             std::size_t avail_size)
             = 0;
+
+        /**
+         * @brief Notify every registered listener that the connection reached a new stage.
+         */
+        void advance_progress(const std::int32_t stage, const std::int32_t error);
+    };
+
+    /**
+     * @brief A connection that is backed by a real network interface of the host machine.
+     *
+     * Symbian expects the connection object to expose the CommsDat records describing the access
+     * point in use (address, netmask, gateway, bearer, service type...). Those records are
+     * synthesised from the host interface the access point was mapped from, so the values the
+     * guest reads describe the network the emulator itself is sitting on.
+     */
+    class host_connection : public connection {
+    private:
+        std::uint32_t iap_id_;
+        bool started_;
+
+    public:
+        explicit host_connection(protocol *pr, saddress dest, const std::uint32_t iap_id = 0);
+
+        /**
+         * @brief Bring the connection up. Since the host is already connected, this only latches
+         *        the selected access point and reports the progress stages the guest waits for.
+         *
+         * @returns False when there is no access point at all to attach to.
+         */
+        bool start();
+
+        /**
+         * @brief Bring the connection down and report the closed stage to listeners.
+         */
+        void stop();
+
+        bool started() const {
+            return started_;
+        }
+
+        std::uint32_t iap_id() const {
+            return iap_id_;
+        }
+
+        void set_iap_id(const std::uint32_t id) {
+            iap_id_ = id;
+        }
+
+        const host_iap *iap() const;
+
+        /**
+         * @brief Resolve a CommsDat style setting name (for example u"IAP\\Id") to an integer.
+         */
+        std::optional<std::uint32_t> get_int_setting(const std::u16string &setting_name);
+
+        /**
+         * @brief Resolve a CommsDat style setting name (for example u"IAP\\Name") to a string.
+         */
+        std::optional<std::u16string> get_string_setting(const std::u16string &setting_name);
+
+        std::size_t get_setting(const std::u16string &setting_name, const setting_type type, std::uint8_t *dest_buffer,
+            std::size_t avail_size) override;
     };
 
     /**
