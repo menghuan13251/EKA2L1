@@ -33,17 +33,28 @@ namespace eka2l1::epoc::socket {
     bool socket::set_option(const std::uint32_t option_id, const std::uint32_t option_family,
         std::uint8_t *buffer, const std::size_t avail_size) {
         if (option_family == epoc::socket::SOCKET_OPTION_FAMILY_BASE) {
+            // Symbian KSOLSocket option IDs as used by real guest apps (EKA2L1's own
+            // SOCKET_OPTION_ID_BLOCKING_IO=5 is a renumbered alias; guests send the
+            // real Symbian values below). These are advisory socket options that the
+            // libuv-based backend does not need, so stub them to success.
             switch (option_id) {
-            case epoc::socket::SOCKET_OPTION_ID_BLOCKING_IO:
-                LOG_INFO(SERVICE_BLUETOOTH, "Set Blocking IO stubbed");
+            case epoc::socket::SOCKET_OPTION_ID_BLOCKING_IO: // 5 (EKA2L1 alias)
+            case 1:                                         // KSOReadDeadline
+            case 2:                                         // KSOBlockingIO
+            case 3:                                         // KSOWriteDeadline
+            case 4:                                         // KSONonBlockingIO
+                LOG_INFO(SERVICE_ESOCK, "Set socket base option (id={}) stubbed", option_id);
                 return true;
 
             default:
-                break;
+                // Other KSOLSocket options are advisory; stub to success so guest calls
+                // such as RSocket::SetOpt do not fail with KErrGeneral and break HTTP.
+                LOG_INFO(SERVICE_ESOCK, "Set socket base option (id={}) stubbed (unhandled)", option_id);
+                return true;
             }
         }
 
-        LOG_ERROR(SERVICE_ESOCK, "Unhandled base option family {} (id {})", option_family, option_id);
+        LOG_ERROR(SERVICE_ESOCK, "Unhandled socket option family {} (id {})", option_family, option_id);
         return false;
     }
 
@@ -773,6 +784,10 @@ namespace eka2l1::epoc::socket {
                 switch (ctx->msg->function) {
                 case socket_so_get_opt:
                     get_option(ctx);
+                    return;
+
+                case socket_so_set_opt:
+                    set_option(ctx);
                     return;
 
                 case socket_so_close:
