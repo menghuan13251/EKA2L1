@@ -20,6 +20,7 @@
 
 #include <common/cvt.h>
 #include <services/internet/protocols/overall.h>
+#include <services/internet/protocols/common.h>
 #include <services/sms/protocols/overall.h>
 #include <services/socket/agent/genconn.h>
 #include <services/socket/connection.h>
@@ -259,8 +260,21 @@ namespace eka2l1 {
     }
 
     void socket_client_session::cn_get_long_des_setting(eka2l1::service::ipc_context *ctx) {
-        LOG_TRACE(SERVICE_ESOCK, "CnGetLongDesSetting stubbed");
-        ctx->complete(epoc::error_none);
+        // This opcode is handled by the session instead of the subsession dispatcher, so route it
+        // back to the connection the guest asked about.
+        std::optional<std::uint32_t> subsess_id = ctx->get_argument_value<std::uint32_t>(3);
+
+        if (subsess_id && (subsess_id.value() > 0)) {
+            socket_subsession_instance *inst = subsessions_.get(subsess_id.value());
+
+            if (inst && (*inst) && ((*inst)->type() == epoc::socket::socket_subsession_type_connection)) {
+                (*inst)->dispatch(ctx);
+                return;
+            }
+        }
+
+        LOG_ERROR(SERVICE_ESOCK, "CnGetLongDesSetting requested on an unknown connection subsession");
+        ctx->complete(epoc::error_not_found);
     }
 
     static void fill_protocol_description(epoc::socket::protocol *pr, protocol_description &des) {
@@ -289,6 +303,29 @@ namespace eka2l1 {
         }
 
         epoc::socket::protocol *result_pr = server<socket_server>()->find_protocol_by_name(protocol_name.value());
+        std::uint32_t override_protocol_id = 0;
+
+        if (!result_pr) {
+            // EKA2L1 registers a single merged "INet" protocol, but Symbian
+            // guests look the INET stack up by the individual protocol names
+            // ("tcp"/"udp"/"ip"/"inet"/"inet6"). Resolve those aliases so the
+            // stack is found, and fix up the protocol id in the description so
+            // the guest opens the socket with the right type (6 = TCP, 17 = UDP).
+            const std::u16string &n = protocol_name.value();
+            if (common::compare_ignore_case(n, std::u16string(u"tcp")) == 0) {
+                override_protocol_id = epoc::internet::INET_TCP_PROTOCOL_ID;
+                result_pr = server<socket_server>()->find_protocol(epoc::internet::INET_ADDRESS_FAMILY, epoc::internet::INET_TCP_PROTOCOL_ID);
+            } else if (common::compare_ignore_case(n, std::u16string(u"udp")) == 0) {
+                override_protocol_id = epoc::internet::INET_UDP_PROTOCOL_ID;
+                result_pr = server<socket_server>()->find_protocol(epoc::internet::INET_ADDRESS_FAMILY, epoc::internet::INET_UDP_PROTOCOL_ID);
+            } else if (common::compare_ignore_case(n, std::u16string(u"ip")) == 0
+                       || common::compare_ignore_case(n, std::u16string(u"inet")) == 0
+                       || common::compare_ignore_case(n, std::u16string(u"inet6")) == 0) {
+                override_protocol_id = epoc::internet::INET_TCP_PROTOCOL_ID;
+                result_pr = server<socket_server>()->find_protocol(epoc::internet::INET_ADDRESS_FAMILY, epoc::internet::INET_TCP_PROTOCOL_ID);
+            }
+        }
+
         if (!result_pr) {
             LOG_WARN(SERVICE_ESOCK, "Can't find protocol named {}", common::ucs2_to_utf8(protocol_name.value()));
             ctx->complete(epoc::error_not_found);
@@ -298,6 +335,9 @@ namespace eka2l1 {
 
         protocol_description description_to_return;
         fill_protocol_description(result_pr, description_to_return);
+        if (override_protocol_id != 0) {
+            description_to_return.protocol_ = override_protocol_id;
+        }
 
         ctx->write_data_to_descriptor_argument<protocol_description>(0, description_to_return);
         ctx->complete(epoc::error_none);
