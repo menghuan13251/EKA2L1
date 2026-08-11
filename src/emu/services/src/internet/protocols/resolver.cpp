@@ -65,7 +65,9 @@ namespace eka2l1::epoc::internet {
 
         sinet_address &in_guest = static_cast<sinet_address&>(dest_addr);
 
-        std::memcpy(in_guest.addr_long(), &in->sin_addr, 4);
+        // FIX: store the resolved address in the same host-order uint32 layout the guest
+        // expects (mirror of GUEST_TO_BSD_ADDR's htonl). ntohl converts from network order.
+        *in_guest.addr_long() = ntohl(in->sin_addr.s_addr);
         in_guest.port_ = ntohs(in->sin_port);
 
         if (data_len) {
