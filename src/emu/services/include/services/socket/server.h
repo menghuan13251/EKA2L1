@@ -40,7 +40,19 @@ namespace eka2l1 {
         class socket_connection_proxy : public socket_subsession {
         private:
             connection *conn_;
+            std::unique_ptr<connection> owned_conn_;
             bool progress_reported_;
+
+        protected:
+            /**
+             * @brief Get the connection this proxy talks to, creating a host-backed one on demand.
+             */
+            connection *ensure_connection();
+
+            void start(service::ipc_context *ctx);
+            void stop(service::ipc_context *ctx);
+            void get_int_setting(service::ipc_context *ctx);
+            void get_des_setting(service::ipc_context *ctx);
 
         public:
             explicit socket_connection_proxy(socket_client_session *parent, connection *conn);
