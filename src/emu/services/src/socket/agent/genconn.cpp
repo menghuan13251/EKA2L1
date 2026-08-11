@@ -18,11 +18,35 @@
  */
 
 #include <common/log.h>
+#include <services/internet/protocols/common.h>
 #include <services/socket/agent/genconn.h>
+#include <services/socket/iap.h>
+#include <services/socket/server.h>
 
 namespace eka2l1::epoc::socket {
     std::unique_ptr<connection> generic_connect_agent::start_connection(conn_preferences &prefs) {
-        LOG_ERROR(SERVICE_ESOCK, "Starting new connection unimplemented, null stubbing");
-        return nullptr;
+        // On a phone this is where the user would be asked which access point to dial. The host
+        // machine is already on a network, so pick the access point that was mapped from the host
+        // interface and bridge the connection straight to it.
+        protocol *bridged = nullptr;
+
+        if (sock_serv_) {
+            bridged = sock_serv_->find_protocol(epoc::internet::INET_ADDRESS_FAMILY, epoc::internet::INET_TCP_PROTOCOL_ID);
+        }
+
+        const host_iap *target = get_default_host_iap();
+
+        if (!target) {
+            LOG_ERROR(SERVICE_ESOCK, "No host network interface is available to start a connection with");
+            return nullptr;
+        }
+
+        std::unique_ptr<host_connection> conn = std::make_unique<host_connection>(bridged, saddress{}, target->id_);
+
+        if (!conn->start()) {
+            return nullptr;
+        }
+
+        return conn;
     }
 }
