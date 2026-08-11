@@ -166,8 +166,14 @@ namespace eka2l1::epoc::internet {
             break;
 
         default:
-            LOG_ERROR(SERVICE_INTERNET, "Unrecognisable socket type to be created (value={})", static_cast<int>(sock_type));
-            return false;
+            // Socket type unspecified (0) or unknown: when the protocol is a known TCP/UDP,
+            // infer the type from it, as real Symbian INet does. Otherwise fail.
+            if (protocol_id != INET_TCP_PROTOCOL_ID && protocol_id != INET_UDP_PROTOCOL_ID) {
+                LOG_ERROR(SERVICE_INTERNET, "Unrecognisable socket type to be created (value={})", static_cast<int>(sock_type));
+                return false;
+            }
+
+            break;
         }
 
         if (opaque_handle_) {
