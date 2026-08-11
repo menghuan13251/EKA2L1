@@ -237,17 +237,20 @@ namespace eka2l1 {
 
             CREATE_SERVER(sys, comm_server);
 
-            // Dbms (database) server. The guest's CommDB access point list is read
-            // through this server; register under every candidate name seen across
-            // Symbian ROM builds so the guest's RDbs session actually reaches our
-            // logging skeleton instead of failing with "unexist server".
-            {
-                const char *dbms_names[] = { "!Dbms", "Dbms", "!DbmsServer", "DbmsServer", "EDbms" };
-                for (const char *name : dbms_names) {
-                    std::unique_ptr<service::server> dbms_temp = std::make_unique<dbms_server>(sys, name);
-                    sys->get_kernel_system()->add_custom_server(dbms_temp);
-                }
-            }
+            // NOTE: The Dbms (database) server skeleton is intentionally NOT registered.
+            //
+            // It was only ever a diagnostic skeleton: it logs every IPC and then answers
+            // ctx->complete(error_none) for all of them without ever filling in the
+            // return data. Registering it under names like "!Dbms"/"Dbms" hijacks the
+            // real DBMS server provided by the Symbian ROM, so every application that
+            // touches a system database gets a bogus "success" with an empty handle /
+            // buffer and panics on the guest side. That made every app (including the
+            // ROM's built-in ones) crash on startup.
+            //
+            // Access point enumeration does not depend on this server (it is served by
+            // the IAP service in services/socket/iap.cpp), so keeping it unregistered
+            // costs no functionality. Only register it again once the real DBMS opcodes
+            // are actually implemented.
 
             CREATE_SERVER(sys, bt_server);
             CREATE_SERVER(sys, btman_server);
