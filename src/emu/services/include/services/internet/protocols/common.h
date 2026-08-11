@@ -21,6 +21,13 @@
 
 // NOTE: This macro makes use of stack variable, so make sure this macro is called in the outer
 // block or in the same block you want to use the address.
+//
+// FIX (IPv4 byte order): the guest keeps the IPv4 address in sinet_address::user_data_ as a
+// host-order uint32 (little-endian on x86), while sockaddr_in::sin_addr expects network order.
+// A raw memcpy therefore produced a byte-swapped address (192.168.2.28 -> 28.2.168.192) and
+// every explicit-IP RSocket::Connect went to the wrong host. Convert with htonl instead.
+// The reverse direction (host -> guest) is handled in resolver.cpp with ntohl, keeping both
+// the explicit-IP path and the DNS path symmetric.
 #define GUEST_TO_BSD_ADDR(addr, dest_ptr)                                                               \
     sockaddr_in ipv4_addr;                                                                              \
     sockaddr_in6 ipv6_addr;                                                                             \
@@ -29,7 +36,7 @@
     if (addr.family_ == epoc::internet::INET_ADDRESS_FAMILY) {                                          \
         ipv4_addr.sin_family = AF_INET;                                                                 \
         ipv4_addr.sin_port = htons(static_cast<std::uint16_t>(addr.port_));                             \
-        std::memcpy(&ipv4_addr.sin_addr, addr.user_data_, 4);                                           \
+        ipv4_addr.sin_addr.s_addr = htonl(*reinterpret_cast<const std::uint32_t*>(addr.user_data_));    \
         dest_ptr = reinterpret_cast<sockaddr*>(&ipv4_addr);                                             \
     } else if (addr.family_ == epoc::internet::INET6_ADDRESS_FAMILY) {                                                                                            \
         ipv6_addr.sin6_family = AF_INET6;                                                               \
