@@ -180,9 +180,15 @@ namespace eka2l1::drivers {
         : shader(0) {
         common::ro_std_file_stream stream(path, std::ios_base::binary);
         if (!stream.valid()) {
+            // Do NOT fall through here. ro_std_file_stream keeps a null FILE* when the
+            // file can't be opened, and calling size()/read() on it forwards the null
+            // pointer to ftello()/fread(). On Android that trips _FORTIFY_SOURCE, which
+            // aborts the process ("FORTIFY: ftello: null FILE*") instead of returning an
+            // error, so a single missing shader kills the whole emulator.
             LOG_ERROR(DRIVER_GRAPHICS, "Shader file stream with path {} is invalid!", path);
+            return;
         }
-        
+
         std::string whole_code;
         whole_code.resize(stream.size());
 
