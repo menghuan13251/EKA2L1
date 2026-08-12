@@ -120,9 +120,15 @@ namespace eka2l1::epoc::internet {
         }
 
         if (opaque_connect_) {
-            uv_connect_t *connect = reinterpret_cast<uv_connect_t*>(opaque_connect_);
-            delete connect;
-
+            // Do NOT free the connect request here while a connect may still be
+            // in flight: uv_tcp_connect() owns its uv_connect_t until its
+            // callback fires. Deleting it early makes libuv touch freed memory
+            // and crash (SIGSEGV inside handle_connect_done_error_code). The
+            // callback in tcp_connect_impl_async deletes the request after
+            // firing, so we only free it here when no connect is pending.
+            if (connect_done_info_.empty()) {
+                delete reinterpret_cast<uv_connect_t*>(opaque_connect_);
+            }
             opaque_connect_ = nullptr;
         }
 
@@ -306,7 +312,10 @@ namespace eka2l1::epoc::internet {
             return;
         }
 
-        kernel_system *kern = connect_done_info_.requester->get_kernel_object_owner();
+        // Use the long-lived protocol object to obtain the kernel lock instead
+        // of the per-request requester thread, whose kernel object may have been
+        // torn down while the async connect was still in flight (use-after-free).
+        kernel_system *kern = papa_->get_kernel_system();
         kern->lock();
 
         if (error_code == 0) {
@@ -372,6 +381,10 @@ namespace eka2l1::epoc::internet {
             [](uv_connect_t *connect, const int err) {
             inet_socket *socket = reinterpret_cast<inet_socket*>(connect->data);
             socket->complete_connect_done_info(err);
+            // The connect request is owned by this callback: free it now so it is
+            // never left dangling for close_down() to delete while still in use.
+            delete connect;
+            socket->opaque_connect_ = nullptr;
         });
 
         if (err < 0) {
